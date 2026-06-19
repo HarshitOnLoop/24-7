@@ -43,8 +43,9 @@ function App() {
   // 1. WebSocket Setup
   useEffect(() => {
     // Connect socket
-    const socket = io(window.location.origin, {
-      path: BACKEND_URL ? `${BACKEND_URL}/socket.io` : '/socket.io'
+    const socketUrl = BACKEND_URL || window.location.origin;
+    const socket = io(socketUrl, {
+      path: '/socket.io'
     });
     socketRef.current = socket;
 
