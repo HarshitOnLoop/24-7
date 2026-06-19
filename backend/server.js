@@ -361,6 +361,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// Serve static assets in production (React build)
+const distPath = path.join(__dirname, '../dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 // Start the Server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

@@ -5,6 +5,8 @@ import {
   Activity, FileVideo, Terminal, Sparkles, Clock, Cpu, BarChart2
 } from 'lucide-react';
 
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+
 function App() {
   // Input and settings state
   const [streamKey, setStreamKey] = useState(() => {
@@ -40,8 +42,8 @@ function App() {
 
   // 1. WebSocket Setup
   useEffect(() => {
-    // Connect socket (proxied through Vite to Node backend)
-    const socket = io();
+    // Connect socket
+    const socket = io(BACKEND_URL);
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -89,7 +91,7 @@ function App() {
   // 2. Fetch Video Files
   const fetchVideos = async () => {
     try {
-      const res = await fetch('/api/videos');
+      const res = await fetch(`${BACKEND_URL}/api/videos`);
       if (res.ok) {
         const data = await res.json();
         setVideoFiles(data);
@@ -161,7 +163,7 @@ function App() {
     setLogs(prev => [...prev, { type: 'system', text: '[SYSTEM] Initializing broadcast request...' }]);
 
     try {
-      const res = await fetch('/api/stream/start', {
+      const res = await fetch(`${BACKEND_URL}/api/stream/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,7 +186,7 @@ function App() {
 
   const handleStopStream = async () => {
     try {
-      const res = await fetch('/api/stream/stop', { method: 'POST' });
+      const res = await fetch(`${BACKEND_URL}/api/stream/stop`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || 'Failed to stop stream');
@@ -204,7 +206,7 @@ function App() {
     }
 
     try {
-      const res = await fetch(`/api/videos/${encodeURIComponent(videoName)}`, {
+      const res = await fetch(`${BACKEND_URL}/api/videos/${encodeURIComponent(videoName)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -225,7 +227,7 @@ function App() {
     setGeneratingTest(true);
     setLogs(prev => [...prev, { type: 'system', text: '[SYSTEM] Starting test pattern generator...' }]);
     try {
-      const res = await fetch('/api/videos/generate-test', { method: 'POST' });
+      const res = await fetch(`${BACKEND_URL}/api/videos/generate-test`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
         setLogs(prev => [...prev, { type: 'system', text: `[SYSTEM] Generated video: ${data.video.name}` }]);
@@ -260,7 +262,7 @@ function App() {
     formData.append('video', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload', true);
+    xhr.open('POST', `${BACKEND_URL}/api/upload`, true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
