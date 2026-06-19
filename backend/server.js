@@ -7,6 +7,8 @@ import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { pipeline } from 'node:stream';
+import { promisify } from 'node:util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,19 +55,135 @@ const storage = multer.diskStorage({
   }
 });
 
+const pipelineAsync = promisify(pipeline);
+const allowedVideoExtensions = ['.mp4', '.mkv', '.mov', '.avi', '.flv', '.webm'];
+const mimeToExtension = {
+  'video/mp4': '.mp4',
+  'video/x-matroska': '.mkv',
+  'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi',
+  'video/x-flv': '.flv',
+  'video/webm': '.webm'
+};
+
 const upload = multer({
   storage,
   limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2GB max
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const allowed = ['.mp4', '.mkv', '.mov', '.avi', '.flv', '.webm'];
-    if (allowed.includes(ext)) {
+    if (allowedVideoExtensions.includes(ext)) {
       cb(null, true);
     } else {
       cb(new Error('Only video files are allowed!'));
     }
   }
 });
+
+function sanitizeFileName(filename) {
+  return filename
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function getGoogleDriveDownloadUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.includes('drive.google.com')) return url;
+
+    if (parsed.pathname.startsWith('/file/d/')) {
+      const parts = parsed.pathname.split('/');
+      const id = parts[3];
+      if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
+    }
+
+    if (parsed.pathname === '/open') {
+      const id = parsed.searchParams.get('id');
+      if (id) return `https://drive.google.com/uc?export=download&id=${id}`;
+    }
+
+    if (parsed.pathname === '/uc') {
+      if (parsed.searchParams.get('id')) {
+        parsed.searchParams.set('export', 'download');
+        return parsed.toString();
+      }
+    }
+
+    return url;
+  } catch (err) {
+    return url;
+  }
+}
+
+function getRemoteFileName(url, contentDisposition, contentType) {
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
+  try {
+    const parsed = new URL(url);
+    const name = path.basename(parsed.pathname) || '';
+    if (name) return name;
+  } catch (err) {
+    // ignore
+  }
+
+  if (contentType && contentType.startsWith('video/')) {
+    return `downloaded_video${mimeToExtension[contentType.split(';')[0]] || '.mp4'}`;
+  }
+
+  return `downloaded_video.mp4`;
+}
+
+async function downloadRemoteFile(remoteUrl) {
+  const response = await fetch(remoteUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; StreamCraft/1.0)'
+    },
+    redirect: 'follow'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Remote video download failed with status ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const contentDisposition = response.headers.get('content-disposition');
+
+  if (contentType.includes('text/html')) {
+    const bodyText = await response.text();
+    const confirmMatch = bodyText.match(/confirm=([0-9A-Za-z_-]+)/);
+    const idMatch = bodyText.match(/id=([0-9A-Za-z_-]+)/);
+
+    if (confirmMatch && idMatch) {
+      const confirmedUrl = `https://drive.google.com/uc?export=download&id=${idMatch[1]}&confirm=${confirmMatch[1]}`;
+      return downloadRemoteFile(confirmedUrl);
+    }
+
+    throw new Error('Unable to download the Google Drive file automatically. Please make sure the link is publicly accessible.');
+  }
+
+  const fileName = sanitizeFileName(getRemoteFileName(remoteUrl, contentDisposition, contentType));
+  const extension = path.extname(fileName).toLowerCase();
+  const outputName = extension ? fileName : `${fileName}${mimeToExtension[contentType.split(';')[0]] || '.mp4'}`;
+  const finalExtension = path.extname(outputName).toLowerCase();
+
+  if (!allowedVideoExtensions.includes(finalExtension)) {
+    throw new Error('The downloaded file is not a supported video format');
+  }
+
+  const finalPath = path.join(uploadDir, `${Date.now()}_${outputName}`);
+  await pipelineAsync(response.body, fs.createWriteStream(finalPath));
+
+  return {
+    path: finalPath,
+    name: path.basename(finalPath),
+    size: fs.statSync(finalPath).size
+  };
+}
 
 // Streaming state variables
 let activeStreamProcess = null;
@@ -220,7 +338,29 @@ app.post('/api/videos/generate-test', (req, res) => {
   });
 });
 
-// 5. Start Streaming
+// 5. Download a remote video file
+app.post('/api/download-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'A valid URL is required' });
+  }
+
+  const remoteUrl = getGoogleDriveDownloadUrl(url.trim());
+
+  try {
+    const downloaded = await downloadRemoteFile(remoteUrl);
+    res.json({
+      message: 'Video downloaded successfully',
+      file: downloaded.name,
+      size: downloaded.size
+    });
+  } catch (error) {
+    console.error('Error downloading remote file:', error);
+    res.status(500).json({ error: error.message || 'Failed to download remote video' });
+  }
+});
+
+// 6. Start Streaming
 app.post('/api/stream/start', (req, res) => {
   const { videoName, streamKey, loop } = req.body;
 
