@@ -1,14 +1,8 @@
 {
-    "experimentalServices": {
-        "frontend": {
-            "routePrefix": "/",
-            "framework": "vite"
-        },
-        "backend": {
-            "root": "backend",
-            "routePrefix": "/_/backend",
-            "entrypoint": "server.js",
-            "runtime": "nodejs22.x"
-        }
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
     }
+  ]
 }
