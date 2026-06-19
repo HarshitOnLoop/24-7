@@ -5,7 +5,7 @@ import {
   Activity, FileVideo, Terminal, Sparkles, Clock, Cpu, BarChart2
 } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+const BACKEND_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/_/backend' : '');
 
 function App() {
   // Input and settings state
@@ -43,7 +43,9 @@ function App() {
   // 1. WebSocket Setup
   useEffect(() => {
     // Connect socket
-    const socket = io(BACKEND_URL);
+    const socket = io(window.location.origin, {
+      path: BACKEND_URL ? `${BACKEND_URL}/socket.io` : '/socket.io'
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {
