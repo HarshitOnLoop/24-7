@@ -5,7 +5,7 @@ import {
   Activity, FileVideo, Terminal, Sparkles, Clock, Cpu, BarChart2
 } from 'lucide-react';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/_/backend' : '');
+const BACKEND_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 function App() {
   // Input and settings state
