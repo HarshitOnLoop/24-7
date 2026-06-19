@@ -14,9 +14,11 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 
-# Install FFmpeg (required for streaming RTMP)
+# Install FFmpeg (required for streaming RTMP) and yt-dlp (for URL downloads)
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg python3 curl && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy backend package setup and install production dependencies

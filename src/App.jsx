@@ -32,6 +32,8 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [generatingTest, setGeneratingTest] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [downloadingUrl, setDownloadingUrl] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uptime, setUptime] = useState('00:00:00');
 
@@ -246,7 +248,33 @@ function App() {
     }
   };
 
-  // 6. Upload Handlers
+  // 6. Upload Handlers & URL Download
+  const handleDownloadUrl = async () => {
+    if (!downloadUrl.trim()) return;
+    setDownloadingUrl(true);
+    setLogs(prev => [...prev, { type: 'system', text: `[SYSTEM] Requesting backend to download from URL...` }]);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/download-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: downloadUrl.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDownloadUrl('');
+        fetchVideos();
+        setSelectedVideo(data.file);
+      } else {
+        alert(data.error || 'Failed to download URL');
+      }
+    } catch (error) {
+      console.error('Error downloading URL:', error);
+      alert('Network error downloading URL.');
+    } finally {
+      setDownloadingUrl(false);
+    }
+  };
+
   const uploadFile = (file) => {
     if (!file) return;
     
@@ -523,6 +551,26 @@ function App() {
             >
               <Sparkles size={16} /> {generatingTest ? 'Generating Test Video...' : 'Generate 720p Test Video'}
             </button>
+
+            {/* URL Download Zone */}
+            <div className="url-download-zone" style={{ marginTop: '1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+              <input 
+                type="text" 
+                placeholder="Paste Google Drive or Video URL here..." 
+                className="input-field"
+                value={downloadUrl}
+                onChange={(e) => setDownloadUrl(e.target.value)}
+                disabled={status.active || downloadingUrl}
+                style={{ flex: 1 }}
+              />
+              <button 
+                className="btn btn-primary"
+                onClick={handleDownloadUrl}
+                disabled={!downloadUrl.trim() || status.active || downloadingUrl}
+              >
+                {downloadingUrl ? 'Downloading...' : 'Fetch Video'}
+              </button>
+            </div>
 
             {/* Upload Zone */}
             <div 
